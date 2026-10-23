@@ -1,0 +1,1520 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>OmniStream XD Pro - v16 WASM Auto-Codec</title>
+    <!-- Motor FFmpeg-WASM + WebCodecs (Movi-Player) para MKV, Multi-Audio AC3/EAC3 y Subtítulos -->
+    <script src="https://cdn.jsdelivr.net/npm/movi-player/dist/element.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mpegts.js@latest/dist/mpegts.js"></script>
+    <style>
+        :root {
+            --bg-dark: #07090e;
+            --panel-bg: rgba(16, 21, 30, 0.92);
+            --panel-border: rgba(255, 255, 255, 0.1);
+            --cyan: #25d5f2;
+            --cyan-glow: rgba(37, 213, 242, 0.35);
+            --text-main: #ffffff;
+            --text-dim: #9aa5b5;
+            --danger: #ff4757;
+            --success: #2ed573;
+            --sub-size: 24px;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+
+        body {
+            margin: 0; padding: 0;
+            background: radial-gradient(circle at 20% 20%, #141c2b 0%, #07090e 70%);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            height: 100vh; width: 100vw; overflow: hidden;
+            display: flex; flex-direction: column;
+        }
+
+        video::cue {
+            font-size: var(--sub-size); color: #ffffff;
+            background-color: rgba(0, 0, 0, 0.85); font-weight: 700;
+            text-shadow: 0 2px 4px #000;
+        }
+
+        /* BARRA SUPERIOR */
+        .top-bar {
+            height: 58px; padding: 0 24px;
+            display: flex; justify-content: space-between; align-items: center;
+            background: rgba(7, 9, 14, 0.95);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            z-index: 100; flex-shrink: 0;
+        }
+
+        .top-left-nav { display: flex; align-items: center; gap: 14px; }
+
+        .back-main-btn {
+            background: var(--cyan); color: #000;
+            border: none; padding: 7px 16px; border-radius: 20px;
+            font-size: 12px; font-weight: 900; cursor: pointer;
+            display: none; align-items: center; gap: 6px;
+            box-shadow: 0 0 15px var(--cyan-glow);
+        }
+        .back-main-btn:hover { background: #fff; }
+
+        .brand-crumb { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+
+        .xd-logo {
+            font-size: 26px; font-weight: 900; letter-spacing: -1px;
+            background: linear-gradient(135deg, #ffffff 30%, var(--cyan) 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+
+        .crumb-path {
+            font-size: 13px; font-weight: 800; color: var(--cyan);
+            letter-spacing: 0.5px; text-transform: uppercase;
+        }
+
+        .top-right-tools { display: flex; align-items: center; gap: 14px; }
+
+        .status-badge {
+            font-size: 11px; font-weight: 700; color: var(--cyan);
+            background: rgba(37, 213, 242, 0.1); padding: 5px 12px;
+            border-radius: 14px; border: 1px solid rgba(37, 213, 242, 0.3);
+        }
+
+        .vpn-pill {
+            background: rgba(16, 21, 30, 0.9); border: 1px solid rgba(37, 213, 242, 0.4);
+            padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 700;
+            display: flex; align-items: center; gap: 6px; cursor: pointer;
+        }
+        .vpn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 8px var(--success); }
+
+        .clock-box { text-align: right; line-height: 1.1; }
+        .clock-time { font-size: 15px; font-weight: 800; color: #fff; }
+        .clock-date { font-size: 10px; color: var(--text-dim); font-weight: 600; }
+
+        .gear-top-btn { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; }
+
+        /* =========================================================
+           VISTA 1: DASHBOARD PRINCIPAL
+           ========================================================= */
+        .view-dashboard {
+            flex: 1; display: grid;
+            grid-template-columns: 43% 55%;
+            gap: 2%; padding: 12px 24px 18px 24px;
+            height: calc(100vh - 58px); overflow: hidden;
+        }
+
+        .dash-left-col {
+            display: flex; flex-direction: column; justify-content: space-between;
+            height: 100%; gap: 10px;
+        }
+
+        .live-preview-header { display: flex; justify-content: space-between; align-items: flex-end; }
+        .live-preview-header h2 { margin: 0; font-size: 18px; font-weight: 800; }
+        .live-preview-header p { margin: 2px 0 0 0; font-size: 10px; color: var(--text-dim); }
+        .live-now-tag { color: var(--cyan); font-size: 11px; font-weight: 800; }
+
+        .mini-tv-frame {
+            width: 100%; flex: 1; min-height: 170px; background: #000;
+            border-radius: 10px; overflow: hidden; position: relative;
+            border: 2px solid rgba(255,255,255,0.14); cursor: pointer;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        .mini-tv-frame:hover { border-color: var(--cyan); }
+        .mini-tv-frame video { width: 100%; height: 100%; object-fit: cover; }
+        .mini-tv-overlay-label {
+            position: absolute; bottom: 10px; left: 12px;
+            background: rgba(0,0,0,0.82); padding: 4px 10px; border-radius: 6px;
+            font-size: 11px; font-weight: 700; color: #fff; border-left: 3px solid var(--cyan);
+        }
+
+        .dash-nav-menu {
+            background: linear-gradient(90deg, rgba(16, 25, 38, 0.95) 0%, rgba(16, 25, 38, 0.4) 100%);
+            border-left: 3px solid var(--cyan); border-radius: 8px; padding: 4px 0;
+            display: flex; flex-direction: column; gap: 2px;
+        }
+
+        .dash-nav-item {
+            padding: 9px 16px; display: flex; align-items: center; gap: 12px;
+            font-size: 13px; font-weight: 800; color: #fff; cursor: pointer;
+            transition: 0.18s; text-transform: uppercase;
+        }
+        .dash-nav-item:hover, .dash-nav-item.active {
+            background: linear-gradient(90deg, rgba(37, 213, 242, 0.25) 0%, transparent 100%);
+            color: var(--cyan); padding-left: 22px;
+        }
+
+        .dash-right-col {
+            display: flex; flex-direction: column; justify-content: space-between;
+            height: 100%; overflow-y: auto; padding-right: 4px; gap: 10px;
+        }
+        .dash-right-col::-webkit-scrollbar { width: 0; }
+
+        .showcase-block { display: flex; flex-direction: column; gap: 6px; }
+        .showcase-header { display: flex; justify-content: space-between; align-items: center; }
+        .showcase-header h3 { margin: 0; font-size: 13px; font-weight: 800; text-transform: uppercase; }
+        .btn-ver-todo {
+            background: rgba(37, 213, 242, 0.14); border: 1.5px solid var(--cyan);
+            color: #fff; padding: 4px 12px; border-radius: 14px; font-size: 10px;
+            font-weight: 800; cursor: pointer; text-transform: uppercase;
+        }
+        .btn-ver-todo:hover { background: var(--cyan); color: #000; }
+
+        .posters-grid-10 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+        .posters-row-7 { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+
+        .poster-tile {
+            aspect-ratio: 2 / 3; width: 100%; max-width: 170px;
+            background: #141a24; border-radius: 8px;
+            overflow: hidden; position: relative; cursor: pointer;
+            border: 1.5px solid rgba(255,255,255,0.08); transition: 0.2s;
+        }
+        .poster-tile:hover { transform: scale(1.04); border-color: var(--cyan); z-index: 5; }
+        .poster-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .poster-tile-title {
+            position: absolute; bottom: 0; left: 0; width: 100%;
+            background: linear-gradient(transparent, rgba(0,0,0,0.96));
+            padding: 16px 5px 5px 5px; font-size: 10px; font-weight: 800;
+            text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+
+        /* =========================================================
+           VISTA 2: TV EN VIVO
+           ========================================================= */
+        .view-livetv {
+            flex: 1; display: none;
+            grid-template-columns: 50px 220px 300px 1fr;
+            gap: 12px; padding: 10px 24px 18px 14px;
+            height: calc(100vh - 58px); overflow: hidden;
+        }
+
+        .left-icon-rail {
+            background: var(--panel-bg); border: 1px solid var(--panel-border);
+            border-radius: 12px; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 18px; padding: 12px 0;
+        }
+        .rail-btn { background: none; border: none; color: var(--text-dim); font-size: 19px; cursor: pointer; }
+        .rail-btn:hover, .rail-btn.active { color: var(--cyan); }
+
+        .live-cats-col, .live-channels-col {
+            background: var(--panel-bg); border: 1px solid var(--panel-border);
+            border-radius: 12px; display: flex; flex-direction: column; overflow: hidden;
+        }
+        .col-search-box { padding: 8px; border-bottom: 1px solid var(--panel-border); }
+        .col-search-box input {
+            width: 100%; background: #07090e; border: 1px solid rgba(255,255,255,0.15);
+            color: #fff; padding: 7px 10px; border-radius: 6px; font-size: 12px; outline: none;
+        }
+        .scroll-list { flex: 1; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 3px; }
+        .scroll-list::-webkit-scrollbar { width: 4px; }
+        .scroll-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+
+        .cat-row {
+            padding: 8px 10px; border-radius: 7px; font-size: 11px; font-weight: 700;
+            color: var(--text-main); display: flex; justify-content: space-between;
+            align-items: center; cursor: pointer;
+        }
+        .cat-row:hover { background: rgba(255,255,255,0.06); }
+        .cat-row.active { background: rgba(37, 213, 242, 0.2); border-left: 3px solid var(--cyan); color: var(--cyan); }
+
+        .ch-row {
+            padding: 7px 9px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 8px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .ch-row:hover { background: rgba(255,255,255,0.08); }
+        .ch-row.active { background: var(--cyan); color: #000; font-weight: 900; }
+
+        .ch-row-left { display: flex; align-items: center; gap: 8px; overflow: hidden; }
+        .ch-logo-box {
+            width: 30px; height: 30px; border-radius: 6px; background: #fff;
+            display: flex; align-items: center; justify-content: center;
+            overflow: hidden; flex-shrink: 0; font-weight: 900; font-size: 9px; color: #000;
+        }
+        .ch-logo-box img { width: 100%; height: 100%; object-fit: contain; }
+        .ch-name-txt { font-size: 11px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .live-stage-col { display: flex; flex-direction: column; gap: 10px; height: 100%; }
+        .live-video-box {
+            flex: 1; background: #000; border-radius: 12px; overflow: hidden;
+            position: relative; border: 1px solid rgba(255,255,255,0.15);
+            display: flex; justify-content: center; align-items: center;
+        }
+        .live-video-box video { width: 100%; height: 100%; object-fit: contain; }
+        .live-fullscreen-btn {
+            position: absolute; top: 10px; right: 10px;
+            background: rgba(0,0,0,0.75); border: 1px solid var(--cyan);
+            color: #fff; padding: 6px 12px; border-radius: 8px; font-size: 11px;
+            font-weight: 800; cursor: pointer; z-index: 10;
+        }
+
+        .live-epg-card {
+            height: 86px; background: var(--panel-bg); border: 1px solid var(--panel-border);
+            border-radius: 12px; padding: 10px 16px; display: flex; align-items: center; gap: 14px;
+        }
+        .epg-big-logo {
+            width: 46px; height: 46px; border-radius: 8px; background: #fff;
+            display: flex; align-items: center; justify-content: center;
+            overflow: hidden; flex-shrink: 0; color: #000; font-weight: 900;
+        }
+        .epg-big-logo img { width: 100%; height: 100%; object-fit: contain; }
+        .epg-info h3 { margin: 0 0 3px 0; font-size: 15px; color: #fff; font-weight: 900; }
+        .epg-now { font-size: 11px; color: var(--cyan); font-weight: 800; }
+
+        /* =========================================================
+           VISTA 3: CATÁLOGO DE PELÍCULAS Y SERIES
+           ========================================================= */
+        .view-vod {
+            flex: 1; display: none;
+            grid-template-columns: 240px 1fr;
+            gap: 14px; padding: 10px 24px 18px 24px;
+            height: calc(100vh - 58px); overflow: hidden;
+        }
+        .vod-content-area {
+            background: var(--panel-bg); border: 1px solid var(--panel-border);
+            border-radius: 12px; display: flex; flex-direction: column; overflow: hidden;
+        }
+        .vod-toolbar {
+            padding: 10px 16px; border-bottom: 1px solid var(--panel-border);
+            display: flex; justify-content: space-between; align-items: center; gap: 12px;
+        }
+        .vod-grid-scroll { flex: 1; overflow-y: auto; padding: 14px; }
+        .vod-posters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(135px, 160px));
+            gap: 12px; justify-content: start;
+        }
+
+        /* =========================================================
+           REPRODUCTOR ÚNICO CON AUTO-DECODIFICADOR WASM + WEBCODECS
+           ========================================================= */
+        .cinema-modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; z-index: 3000; flex-direction: column; justify-content: center; align-items: center;
+        }
+        .cinema-top-bar {
+            position: absolute; top: 0; left: 0; width: 100%; padding: 14px 24px;
+            display: flex; justify-content: space-between; align-items: center;
+            background: linear-gradient(rgba(0,0,0,0.92), transparent); z-index: 3005;
+        }
+        .cinema-left-group { display: flex; align-items: center; gap: 12px; }
+        .cinema-back-btn {
+            background: var(--cyan); color: #000; border: none;
+            padding: 7px 16px; border-radius: 20px; font-size: 12px;
+            font-weight: 900; cursor: pointer; display: flex; align-items: center; gap: 6px;
+        }
+
+        .cinema-actions { display: flex; align-items: center; gap: 10px; }
+        .osd-trigger-btn {
+            background: rgba(37, 213, 242, 0.22); border: 1.5px solid var(--cyan);
+            color: #fff; padding: 7px 16px; border-radius: 20px; font-size: 12px;
+            font-weight: 800; cursor: pointer;
+        }
+        .osd-trigger-btn:hover { background: var(--cyan); color: #000; }
+        .close-circle-btn {
+            background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3);
+            color: #fff; width: 36px; height: 36px; border-radius: 50%;
+            font-size: 16px; font-weight: bold; cursor: pointer;
+        }
+
+        .cinema-video-wrapper {
+            width: 100%; height: 100%; position: relative;
+            display: flex; justify-content: center; align-items: center; background: #000;
+        }
+        .cinema-video-wrapper movi-player,
+        .cinema-video-wrapper video {
+            width: 100%; height: 100%; object-fit: contain; display: block;
+        }
+
+        /* PANEL ÚNICO DE IDIOMA, AUDIO Y SUBTÍTULOS */
+        .osd-floating-panel {
+            position: absolute; top: 60px; right: 24px; width: 350px;
+            background: rgba(12, 16, 23, 0.97); border: 1.5px solid var(--cyan);
+            border-radius: 14px; padding: 16px; z-index: 3010; display: none;
+            flex-direction: column; gap: 12px; box-shadow: 0 20px 50px rgba(0,0,0,0.95);
+        }
+        .osd-sec label {
+            display: block; font-size: 10px; font-weight: 800; color: var(--cyan);
+            text-transform: uppercase; margin-bottom: 5px; letter-spacing: 0.4px;
+        }
+        .osd-sec select, .osd-sec input[type="range"] {
+            width: 100%; background: #07090e; color: #fff;
+            border: 1px solid rgba(255,255,255,0.22); padding: 8px 10px;
+            border-radius: 8px; font-size: 12px; font-weight: 600; outline: none;
+        }
+        .osd-btn-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+        .osd-chip {
+            background: #171f2c; color: #fff; border: 1px solid rgba(255,255,255,0.15);
+            padding: 8px 6px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;
+            text-align: center;
+        }
+        .osd-chip:hover, .osd-chip.active { background: var(--cyan); color: #000; }
+
+        .overlay-modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+            z-index: 2500; justify-content: center; align-items: center;
+        }
+        .modal-card {
+            width: 90%; max-width: 520px; max-height: 85vh; background: #10151e;
+            border: 1px solid var(--cyan); border-radius: 14px; padding: 20px;
+            display: flex; flex-direction: column; gap: 12px; overflow-y: auto;
+        }
+        .ep-row-btn {
+            background: #171f2c; padding: 10px 14px; border-radius: 8px;
+            display: flex; justify-content: space-between; align-items: center;
+            cursor: pointer; border: 1px solid rgba(255,255,255,0.06); font-size: 12px;
+        }
+        .ep-row-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+    </style>
+</head>
+<body>
+
+    <div class="top-bar">
+        <div class="top-left-nav">
+            <button class="back-main-btn" id="globalBackBtn" onclick="switchView('dashboard')">⬅ ATRÁS / INICIO</button>
+            <div class="brand-crumb" onclick="switchView('dashboard')">
+                <span class="xd-logo">XD</span>
+                <span class="crumb-path" id="breadcrumbText">| INICIO</span>
+            </div>
+        </div>
+
+        <div class="top-right-tools">
+            <div class="status-badge" id="topSyncBadge">Cargando...</div>
+            <div class="vpn-pill" onclick="openVpnModal()">
+                <div class="vpn-dot"></div>
+                <span id="vpnTopText">VPN: Directo</span>
+            </div>
+            <div class="clock-box">
+                <div class="clock-time" id="clockTime">07:35</div>
+                <div class="clock-date" id="clockDate">23/10/2026</div>
+            </div>
+            <button class="gear-top-btn" onclick="openSettingsModal()">⚙️</button>
+        </div>
+    </div>
+
+    <!-- VISTA 1: DASHBOARD LANDSCAPE -->
+    <div class="view-dashboard" id="viewDashboard">
+        <div class="dash-left-col">
+            <div class="live-preview-header">
+                <div>
+                    <h2>TELEVISIÓN EN VIVO</h2>
+                    <p>TOCA EL REPRODUCTOR PARA VER LA GUÍA COMPLETA</p>
+                </div>
+                <span class="live-now-tag">EN DIRECTO AHORA</span>
+            </div>
+
+            <div class="mini-tv-frame" onclick="switchView('livetv')">
+                <video id="homePreviewVideo" autoplay muted playsinline></video>
+                <div class="mini-tv-overlay-label" id="homePreviewLabel">Sintonizando TV en Vivo...</div>
+            </div>
+
+            <div class="dash-nav-menu">
+                <div class="dash-nav-item active" onclick="switchView('livetv')">
+                    <span>((•))</span><span>TV EN VIVO (<span id="navCountLive">0</span>)</span>
+                </div>
+                <div class="dash-nav-item" onclick="switchView('movies')">
+                    <span>🛞</span><span>PELÍCULAS (<span id="navCountMovies">0</span>)</span>
+                </div>
+                <div class="dash-nav-item" onclick="switchView('series')">
+                    <span>🎬</span><span>SERIES (<span id="navCountSeries">0</span>)</span>
+                </div>
+                <div class="dash-nav-item" onclick="syncAllData(true)">
+                    <span>🔄</span><span id="syncMenuText">ACTUALIZAR CATÁLOGO</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="dash-right-col">
+            <div class="showcase-block">
+                <div class="showcase-header">
+                    <h3>PELÍCULAS AGREGADAS</h3>
+                    <button class="btn-ver-todo" onclick="switchView('movies')">VER TODO</button>
+                </div>
+                <div class="posters-grid-10" id="homeMoviesGrid"></div>
+            </div>
+
+            <div class="showcase-block">
+                <div class="showcase-header">
+                    <h3>SERIES AGREGADAS</h3>
+                    <button class="btn-ver-todo" onclick="switchView('series')">VER TODO</button>
+                </div>
+                <div class="posters-row-7" id="homeSeriesGrid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- VISTA 2: TV EN VIVO -->
+    <div class="view-livetv" id="viewLiveTv">
+        <div class="left-icon-rail">
+            <button class="rail-btn" onclick="switchView('dashboard')" title="Inicio">🏠</button>
+            <button class="rail-btn" onclick="document.getElementById('liveChSearch').focus()" title="Buscar">🔍</button>
+            <button class="rail-btn" onclick="selectLiveCategory('favs')" title="Favoritos">❤️</button>
+            <button class="rail-btn active" onclick="selectLiveCategory('all')" title="Todos">☰</button>
+            <button class="rail-btn" onclick="switchView('movies')" title="Películas">🛞</button>
+            <button class="rail-btn" onclick="switchView('series')" title="Series">🎬</button>
+        </div>
+
+        <div class="live-cats-col">
+            <div class="col-search-box">
+                <input type="text" id="liveCatSearch" placeholder="Filtrar país o grupo..." oninput="renderLiveCategories()">
+            </div>
+            <div class="scroll-list" id="liveCatsList"></div>
+        </div>
+
+        <div class="live-channels-col">
+            <div class="col-search-box">
+                <input type="text" id="liveChSearch" placeholder="Buscar canal..." oninput="renderLiveChannelsList()">
+            </div>
+            <div class="scroll-list" id="liveChannelsList"></div>
+        </div>
+
+        <div class="live-stage-col">
+            <div class="live-video-box">
+                <button class="live-fullscreen-btn" onclick="expandLiveToCinema()">⛶ Pantalla Completa</button>
+                <video id="liveStageVideo" controls autoplay playsinline></video>
+            </div>
+            <div class="live-epg-card">
+                <div class="epg-big-logo" id="epgLogoBox">TV</div>
+                <div class="epg-info">
+                    <h3 id="epgChannelTitle">Selecciona un canal</h3>
+                    <div class="epg-now" id="epgCurrentProg">ESTÁS VIENDO: TRANSMISIÓN EN VIVO</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- VISTA 3: CATÁLOGO DE PELÍCULAS Y SERIES -->
+    <div class="view-vod" id="viewVod">
+        <div class="live-cats-col">
+            <div class="col-search-box">
+                <input type="text" id="vodCatSearch" placeholder="Filtrar idioma / género..." oninput="renderVodCategories()">
+            </div>
+            <div class="scroll-list" id="vodCatsList"></div>
+        </div>
+
+        <div class="vod-content-area">
+            <div class="vod-toolbar">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <button class="btn-ver-todo" onclick="switchView('dashboard')">⬅ INICIO</button>
+                    <strong id="vodHeaderTitle" style="font-size:13px;">CATÁLOGO</strong>
+                </div>
+                <input type="text" id="vodTitleSearch" placeholder="🔍 Buscar título (Español, Subtitulada, Dual)..." style="width:310px; background:#07090e; border:1px solid rgba(255,255,255,0.2); color:#fff; padding:7px 12px; border-radius:8px; font-size:12px; outline:none;" oninput="renderVodGrid()">
+            </div>
+            <div class="vod-grid-scroll">
+                <div class="vod-posters-grid" id="vodPostersGrid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- REPRODUCTOR ÚNICO CON AUTO-ELECCIÓN DE CÓDEC (FFMPEG-WASM + HTML5) -->
+    <div class="cinema-modal" id="cinemaModal">
+        <div class="cinema-top-bar">
+            <div class="cinema-left-group">
+                <button class="cinema-back-btn" onclick="closeCinemaModal()">⬅ ATRÁS</button>
+                <strong id="cinemaTitle" style="font-size:15px;">Reproduciendo...</strong>
+            </div>
+            <div class="cinema-actions">
+                <button class="osd-trigger-btn" onclick="toggleOsdPanel()">🌐 Idioma, Audio y Subtítulos</button>
+                <button class="close-circle-btn" onclick="closeCinemaModal()">✕</button>
+            </div>
+        </div>
+
+        <div class="osd-floating-panel" id="osdPanel">
+            <div class="osd-sec">
+                <label>🗣️ 1. Cambiar Versión / Idioma en Catálogo:</label>
+                <select id="languageVariantSelect" onchange="switchLanguageVariant(this.value)"></select>
+            </div>
+
+            <div class="osd-sec">
+                <label>🔊 2. Seleccionar Idioma de Audio (Pistas del Video):</label>
+                <select id="internalAudioSelect" onchange="switchInternalAudioTrack(this.value)"></select>
+            </div>
+
+            <div class="osd-sec">
+                <label>💬 3. Seleccionar Subtítulos (Integrados o Archivo .SRT):</label>
+                <div style="display:flex; gap:6px;">
+                    <select id="subtitleSelect" onchange="switchSubtitleTrack(this.value)" style="flex:1;">
+                        <option value="-1">Subtítulos Desactivados</option>
+                    </select>
+                    <button class="osd-chip" style="padding:0 12px;" onclick="document.getElementById('srtFileInput').click()">📂 .SRT</button>
+                    <input type="file" id="srtFileInput" accept=".srt,.vtt" style="display:none" onchange="uploadSrtFile(event)">
+                </div>
+            </div>
+
+            <div class="osd-sec">
+                <label>📢 Volumen (<span id="volPct">100%</span>) y Tamaño de Subtítulo:</label>
+                <input type="range" id="volRange" min="0" max="1" step="0.05" value="1" oninput="setSafeVolume(this.value)" style="margin-bottom:8px;">
+                <div class="osd-btn-row">
+                    <button class="osd-chip" onclick="setSubStyle('18px')">Chico</button>
+                    <button class="osd-chip active" onclick="setSubStyle('24px')">Normal</button>
+                    <button class="osd-chip" onclick="setSubStyle('32px')">Grande</button>
+                    <button class="osd-chip" onclick="setSubStyle('40px')">Max</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="cinema-video-wrapper" id="playerMountBox">
+            <!-- El motor auto-inserta <movi-player> (WASM Dolby/MKV) o <video> aquí -->
+            <video id="cinemaVideo" controls autoplay playsinline></video>
+        </div>
+    </div>
+
+    <!-- MODAL DE TEMPORADAS Y EPISODIOS DE SERIES -->
+    <div class="overlay-modal" id="seriesEpisodesModal">
+        <div class="modal-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 id="seriesTitleHeader" style="margin:0;">Capítulos</h3>
+                <button class="close-circle-btn" style="width:32px; height:32px; font-size:14px;" onclick="document.getElementById('seriesEpisodesModal').style.display='none'">✕</button>
+            </div>
+            <div id="episodesContainer" style="display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
+    </div>
+
+    <!-- MODAL DE VPN -->
+    <div class="overlay-modal" id="vpnModal">
+        <div class="modal-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0;">🛡️ Selector de Región VPN</h3>
+                <button class="close-circle-btn" style="width:32px; height:32px; font-size:14px;" onclick="document.getElementById('vpnModal').style.display='none'">✕</button>
+            </div>
+            <div class="ep-row-btn" onclick="setVpnProxy('Directo', '')"><span>⚡ Conexión Directa (Máxima Velocidad)</span><span>0 ms</span></div>
+            <div class="ep-row-btn" onclick="setVpnProxy('🇺🇸 USA (Miami)', 'https://corsproxy.io/?')"><span>🇺🇸 Estados Unidos - Miami</span><span>Estable</span></div>
+            <div class="ep-row-btn" onclick="setVpnProxy('🇺🇸 USA (New York)', 'https://api.allorigins.win/raw?url=')"><span>🇺🇸 Estados Unidos - New York</span><span>Rápido</span></div>
+            <div class="ep-row-btn" onclick="setVpnProxy('🇪🇺 Europa (Madrid)', 'https://api.codetabs.com/v1/proxy?quest=')"><span>🇪🇺 Europa - Madrid / Frankfurt</span><span>Activo</span></div>
+            <div class="ep-row-btn" onclick="setVpnProxy('🇯🇵 Asia (Tokio)', 'https://corsproxy.io/?')"><span>🇯🇵 Asia - Tokio</span><span>Activo</span></div>
+            <div class="ep-row-btn" onclick="setVpnProxy('🇦🇺 Australia (Sídney)', 'https://api.allorigins.win/raw?url=')"><span>🇦🇺 Australia - Sídney</span><span>Activo</span></div>
+        </div>
+    </div>
+
+    <!-- MODAL DE CONFIGURACIÓN -->
+    <div class="overlay-modal" id="settingsModal">
+        <div class="modal-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0;">⚙️ Configuración Xtream Codes</h3>
+                <button class="close-circle-btn" style="width:32px; height:32px; font-size:14px;" onclick="document.getElementById('settingsModal').style.display='none'">✕</button>
+            </div>
+            <div>
+                <label style="font-size:11px; color:var(--text-dim);">SERVIDOR / HOST</label>
+                <input type="text" id="cfgHost" value="http://xdgo.tv:8080" style="width:100%; background:#07090e; color:#fff; border:1px solid #333; padding:10px; border-radius:8px; margin-top:4px;">
+            </div>
+            <div>
+                <label style="font-size:11px; color:var(--text-dim);">USUARIO</label>
+                <input type="text" id="cfgUser" value="rcollantecornejo" style="width:100%; background:#07090e; color:#fff; border:1px solid #333; padding:10px; border-radius:8px; margin-top:4px;">
+            </div>
+            <div>
+                <label style="font-size:11px; color:var(--text-dim);">CONTRASEÑA</label>
+                <input type="password" id="cfgPass" value="ajBC9pV4" style="width:100%; background:#07090e; color:#fff; border:1px solid #333; padding:10px; border-radius:8px; margin-top:4px;">
+            </div>
+            <button class="osd-trigger-btn" style="width:100%; padding:12px;" onclick="syncAllData(true)">🔄 Sincronizar Catálogo Ahora</button>
+            <button class="osd-chip" style="background:var(--danger); color:#fff; padding:10px;" onclick="clearDatabase()">🗑️ Borrar Base de Datos y Reiniciar</button>
+        </div>
+    </div>
+
+    <script>
+        let dbCatalog = { live: [], movies: [], series: [] };
+        let currentSeriesEpisodesList = [];
+        let favoritesList = [];
+        let resumeMap = {};
+        let currentLiveCat = 'CHILE';
+        let currentVodSection = 'movies';
+        let currentVodCat = 'all';
+        let activeChannelObj = null;
+        let activeVodObj = null;
+        let vpnPrefix = '';
+
+        let hlsHome = null;
+        let hlsStage = null;
+        let hlsCinema = null;
+        let mpegtsHome = null;
+        let mpegtsStage = null;
+        let activeMoviElement = null;
+
+        try {
+            favoritesList = JSON.parse(localStorage.getItem('xd_favs') || '[]');
+            resumeMap = JSON.parse(localStorage.getItem('xd_resume') || '{}');
+        } catch (e) {}
+
+        function updateClock() {
+            const now = new Date();
+            const hh = String(now.getHours()).padStart(2, '0');
+            const mm = String(now.getMinutes()).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            const mo = String(now.getMonth() + 1).padStart(2, '0');
+            const yy = now.getFullYear();
+            document.getElementById('clockTime').innerText = hh + ':' + mm;
+            document.getElementById('clockDate').innerText = dd + '/' + mo + '/' + yy;
+        }
+        setInterval(updateClock, 10000);
+        updateClock();
+
+        function openDB(dbName) {
+            return new Promise(function(resolve, reject) {
+                const req = indexedDB.open(dbName, 1);
+                req.onupgradeneeded = function(e) {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('store')) db.createObjectStore('store');
+                };
+                req.onsuccess = function(e) { resolve(e.target.result); };
+                req.onerror = function(e) { reject(e); };
+            });
+        }
+
+        async function saveDB(key, val) {
+            try {
+                const db = await openDB('OmniXD_DB_v12');
+                return new Promise(function(res) {
+                    const tx = db.transaction('store', 'readwrite');
+                    tx.objectStore('store').put(val, key);
+                    tx.oncomplete = function() { res(true); };
+                    tx.onerror = function() { res(false); };
+                });
+            } catch (e) { return false; }
+        }
+
+        async function loadDB(dbName, key) {
+            try {
+                const db = await openDB(dbName);
+                return new Promise(function(res) {
+                    const tx = db.transaction('store', 'readonly');
+                    const req = tx.objectStore('store').get(key);
+                    req.onsuccess = function() { res(req.result || null); };
+                    req.onerror = function() { res(null); };
+                });
+            } catch (e) { return null; }
+        }
+
+        window.onload = async function() {
+            let l = await loadDB('OmniXD_DB_v12', 'live') || await loadDB('OmniStreamDB_v9', 'catalog_live');
+            let m = await loadDB('OmniXD_DB_v12', 'movies') || await loadDB('OmniStreamDB_v9', 'catalog_movies');
+            let s = await loadDB('OmniXD_DB_v12', 'series') || await loadDB('OmniStreamDB_v9', 'catalog_series');
+
+            if (Array.isArray(l) && l.length > 0 && Array.isArray(m) && m.length > 0) {
+                dbCatalog.live = l;
+                dbCatalog.movies = m;
+                dbCatalog.series = Array.isArray(s) ? s : [];
+                initDashboardContent();
+                return;
+            }
+            syncAllData(false);
+        };
+
+        async function apiFetch(host, user, pass, action) {
+            const url = host + "/player_api.php?username=" + encodeURIComponent(user) + "&password=" + encodeURIComponent(pass) + "&action=" + action;
+            const tries = [
+                function(u) { return u; },
+                function(u) { return "https://corsproxy.io/?" + encodeURIComponent(u); },
+                function(u) { return "https://api.allorigins.win/raw?url=" + encodeURIComponent(u); }
+            ];
+            for (let i = 0; i < tries.length; i++) {
+                try {
+                    const r = await fetch(tries[i](url));
+                    if (r.ok) {
+                        const data = await r.json();
+                        if (data) return data;
+                    }
+                } catch (e) {}
+            }
+            return [];
+        }
+
+        async function syncAllData(fromUser) {
+            const host = document.getElementById('cfgHost').value.trim().replace(/\/+$/, '');
+            const user = document.getElementById('cfgUser').value.trim();
+            const pass = document.getElementById('cfgPass').value.trim();
+            const badge = document.getElementById('topSyncBadge');
+
+            badge.innerText = "⏳ 1/3 TV en Vivo...";
+            const [lCats, lStreams] = await Promise.all([
+                apiFetch(host, user, pass, 'get_live_categories'),
+                apiFetch(host, user, pass, 'get_live_streams')
+            ]);
+            const lMap = {};
+            if (Array.isArray(lCats)) lCats.forEach(function(c) { lMap[c.category_id] = c.category_name.replace(/^CANALES\s+/i, '').trim(); });
+            if (Array.isArray(lStreams) && lStreams.length > 0) {
+                dbCatalog.live = lStreams.map(function(st) {
+                    return {
+                        id: st.stream_id,
+                        title: st.name || 'Canal',
+                        group: lMap[st.category_id] || 'GENERAL',
+                        rawUrl: host + "/" + user + "/" + pass + "/" + st.stream_id,
+                        logo: st.stream_icon || '',
+                        type: 'live'
+                    };
+                });
+                await saveDB('live', dbCatalog.live);
+            }
+
+            badge.innerText = "⏳ 2/3 Películas...";
+            const [vCats, vStreams] = await Promise.all([
+                apiFetch(host, user, pass, 'get_vod_categories'),
+                apiFetch(host, user, pass, 'get_vod_streams')
+            ]);
+            const vMap = {};
+            if (Array.isArray(vCats)) vCats.forEach(function(c) { vMap[c.category_id] = c.category_name; });
+            if (Array.isArray(vStreams) && vStreams.length > 0) {
+                dbCatalog.movies = vStreams.map(function(st) {
+                    const ext = st.container_extension || 'mp4';
+                    return {
+                        id: st.stream_id,
+                        title: st.name || 'Película',
+                        group: vMap[st.category_id] || 'CINE',
+                        ext: ext,
+                        rawUrl: host + "/movie/" + user + "/" + pass + "/" + st.stream_id + "." + ext,
+                        poster: st.stream_icon || '',
+                        type: 'movie'
+                    };
+                });
+                await saveDB('movies', dbCatalog.movies);
+            }
+
+            badge.innerText = "⏳ 3/3 Series...";
+            const [sCats, sStreams] = await Promise.all([
+                apiFetch(host, user, pass, 'get_series_categories'),
+                apiFetch(host, user, pass, 'get_series')
+            ]);
+            const sMap = {};
+            if (Array.isArray(sCats)) sCats.forEach(function(c) { sMap[c.category_id] = c.category_name; });
+            if (Array.isArray(sStreams) && sStreams.length > 0) {
+                dbCatalog.series = sStreams.map(function(st) {
+                    return {
+                        id: st.series_id,
+                        title: st.name || 'Serie',
+                        group: sMap[st.category_id] || 'SERIES',
+                        poster: st.cover || '',
+                        type: 'series'
+                    };
+                });
+                await saveDB('series', dbCatalog.series);
+            }
+
+            document.getElementById('settingsModal').style.display = 'none';
+            initDashboardContent();
+        }
+
+        function initDashboardContent() {
+            document.getElementById('navCountLive').innerText = dbCatalog.live.length;
+            document.getElementById('navCountMovies').innerText = dbCatalog.movies.length;
+            document.getElementById('navCountSeries').innerText = dbCatalog.series.length;
+            document.getElementById('topSyncBadge').innerText =
+                '📺 ' + dbCatalog.live.length + ' | 🎬 ' + dbCatalog.movies.length + ' | 🍿 ' + dbCatalog.series.length;
+
+            const mGrid = document.getElementById('homeMoviesGrid');
+            mGrid.innerHTML = '';
+            dbCatalog.movies.slice(0, 10).forEach(function(mov) {
+                const tile = document.createElement('div');
+                tile.className = 'poster-tile';
+                tile.onclick = function() { openCinemaPlayer(mov); };
+                tile.innerHTML = (mov.poster ? '<img src="' + mov.poster + '" loading="lazy" onerror="this.style.display=\'none\'">' : '') +
+                                 '<div class="poster-tile-title">' + mov.title + '</div>';
+                mGrid.appendChild(tile);
+            });
+
+            const sGrid = document.getElementById('homeSeriesGrid');
+            sGrid.innerHTML = '';
+            dbCatalog.series.slice(0, 7).forEach(function(ser) {
+                const tile = document.createElement('div');
+                tile.className = 'poster-tile';
+                tile.onclick = function() { openSeriesModal(ser); };
+                tile.innerHTML = (ser.poster ? '<img src="' + ser.poster + '" loading="lazy" onerror="this.style.display=\'none\'">' : '') +
+                                 '<div class="poster-tile-title">' + ser.title + '</div>';
+                sGrid.appendChild(tile);
+            });
+
+            if (dbCatalog.live.length > 0) {
+                const defaultCh = dbCatalog.live.find(function(c) {
+                    return (c.group && c.group.toUpperCase().includes('CHILE')) || c.title.toUpperCase().includes('24 HORAS');
+                }) || dbCatalog.live[0];
+                activeChannelObj = defaultCh;
+                document.getElementById('homePreviewLabel').innerText = '🔴 EN DIRECTO: ' + defaultCh.title;
+                playStreamInElement(defaultCh.rawUrl, document.getElementById('homePreviewVideo'), true);
+            }
+        }
+
+        function switchView(viewName) {
+            stopHomePreview();
+            document.getElementById('viewDashboard').style.display = 'none';
+            document.getElementById('viewLiveTv').style.display = 'none';
+            document.getElementById('viewVod').style.display = 'none';
+
+            const backBtn = document.getElementById('globalBackBtn');
+
+            if (viewName === 'dashboard') {
+                backBtn.style.display = 'none';
+                document.getElementById('breadcrumbText').innerText = '| INICIO';
+                document.getElementById('viewDashboard').style.display = 'grid';
+                document.getElementById('liveStageVideo').pause();
+                if (activeChannelObj) {
+                    playStreamInElement(activeChannelObj.rawUrl, document.getElementById('homePreviewVideo'), true);
+                }
+            } else if (viewName === 'livetv') {
+                backBtn.style.display = 'inline-flex';
+                document.getElementById('viewLiveTv').style.display = 'grid';
+                const chileGroup = dbCatalog.live.find(function(c) { return c.group && c.group.toUpperCase().includes('CHILE'); });
+                currentLiveCat = chileGroup ? chileGroup.group : 'all';
+                document.getElementById('breadcrumbText').innerText = '| TV EN VIVO | ' + currentLiveCat;
+                renderLiveCategories();
+                renderLiveChannelsList();
+                if (activeChannelObj) playChannelInStage(activeChannelObj);
+            } else if (viewName === 'movies' || viewName === 'series') {
+                backBtn.style.display = 'inline-flex';
+                currentVodSection = viewName;
+                currentVodCat = 'all';
+                document.getElementById('breadcrumbText').innerText = '| ' + (viewName === 'movies' ? 'PELÍCULAS' : 'SERIES');
+                document.getElementById('viewVod').style.display = 'grid';
+                renderVodCategories();
+                renderVodGrid();
+            }
+        }
+
+        function stopHomePreview() {
+            const v = document.getElementById('homePreviewVideo');
+            v.pause(); v.removeAttribute('src');
+            if (hlsHome) { hlsHome.destroy(); hlsHome = null; }
+            if (mpegtsHome) { mpegtsHome.destroy(); mpegtsHome = null; }
+        }
+
+        // TV EN VIVO
+        function renderLiveCategories() {
+            const box = document.getElementById('liveCatsList');
+            box.innerHTML = '';
+            const q = document.getElementById('liveCatSearch').value.trim().toLowerCase();
+            const counts = {};
+            const groups = [];
+            dbCatalog.live.forEach(function(c) {
+                const g = c.group || 'GENERAL';
+                if (!counts[g]) { counts[g] = 0; groups.push(g); }
+                counts[g]++;
+            });
+
+            function addCat(id, label, count) {
+                const r = document.createElement('div');
+                r.className = 'cat-row' + (currentLiveCat === id ? ' active' : '');
+                r.onclick = function() { selectLiveCategory(id); };
+                r.innerHTML = '<span>' + label + '</span><span style="opacity:0.6;">' + count + '</span>';
+                box.appendChild(r);
+            }
+
+            if (!q) {
+                addCat('all', '🌐 TODOS LOS CANALES', dbCatalog.live.length);
+                addCat('favs', '❤️ MIS FAVORITOS', favoritesList.length);
+            }
+            groups.forEach(function(g) {
+                if (q && !g.toLowerCase().includes(q)) return;
+                addCat(g, g, counts[g]);
+            });
+        }
+
+        function selectLiveCategory(catId) {
+            currentLiveCat = catId;
+            document.getElementById('breadcrumbText').innerText = '| TV EN VIVO | ' + (catId === 'all' ? 'TODOS' : catId);
+            renderLiveCategories();
+            renderLiveChannelsList();
+        }
+
+        function renderLiveChannelsList() {
+            const box = document.getElementById('liveChannelsList');
+            box.innerHTML = '';
+            const q = document.getElementById('liveChSearch').value.trim().toLowerCase();
+
+            const filtered = dbCatalog.live.filter(function(c) {
+                const matchQ = !q || c.title.toLowerCase().includes(q);
+                const matchC = currentLiveCat === 'all' ? true : (currentLiveCat === 'favs' ? favoritesList.includes(c.rawUrl) : c.group === currentLiveCat);
+                return matchQ && matchC;
+            });
+
+            filtered.slice(0, 250).forEach(function(ch) {
+                const isFav = favoritesList.includes(ch.rawUrl);
+                const isAct = activeChannelObj && activeChannelObj.rawUrl === ch.rawUrl;
+                const row = document.createElement('div');
+                row.className = 'ch-row' + (isAct ? ' active' : '');
+                row.onclick = function() { playChannelInStage(ch); };
+
+                const shortBadge = ch.title.replace(/^CL\s*\|\s*/i, '').substring(0, 3).toUpperCase();
+                const logoImg = ch.logo || ch.poster || '';
+                const logoHtml = logoImg ? '<img src="' + logoImg + '" onerror="this.parentElement.innerText=\'' + shortBadge + '\'">' : shortBadge;
+
+                row.innerHTML = '<div class="ch-row-left"><div class="ch-logo-box">' + logoHtml + '</div><span class="ch-name-txt">' + ch.title + '</span></div>' +
+                                '<span onclick="event.stopPropagation(); toggleFavorite(\'' + ch.rawUrl + '\')" style="font-size:14px;">' + (isFav ? '❤️' : '🤍') + '</span>';
+                box.appendChild(row);
+            });
+        }
+
+        function playChannelInStage(ch) {
+            activeChannelObj = ch;
+            renderLiveChannelsList();
+            document.getElementById('epgChannelTitle').innerText = ch.title;
+            const logoBox = document.getElementById('epgLogoBox');
+            const logoImg = ch.logo || ch.poster || '';
+            logoBox.innerHTML = logoImg ? '<img src="' + logoImg + '">' : 'TV';
+
+            const video = document.getElementById('liveStageVideo');
+            video.muted = false;
+            playStreamInElement(ch.rawUrl, video, false);
+        }
+
+        function expandLiveToCinema() {
+            if (!activeChannelObj) return;
+            document.getElementById('liveStageVideo').pause();
+            openCinemaPlayer({
+                id: activeChannelObj.id,
+                title: activeChannelObj.title,
+                rawUrl: activeChannelObj.rawUrl,
+                type: 'live'
+            });
+        }
+
+        function playStreamInElement(rawUrl, videoEl, isMuted) {
+            videoEl.pause();
+            if (videoEl.id === 'liveStageVideo') {
+                if (hlsStage) { hlsStage.destroy(); hlsStage = null; }
+                if (mpegtsStage) { mpegtsStage.destroy(); mpegtsStage = null; }
+            } else {
+                if (hlsHome) { hlsHome.destroy(); hlsHome = null; }
+                if (mpegtsHome) { mpegtsHome.destroy(); mpegtsHome = null; }
+            }
+
+            videoEl.muted = isMuted;
+            const baseClean = rawUrl.replace(/\.m3u8$/i, '');
+            const finalTs = vpnPrefix ? vpnPrefix + encodeURIComponent(baseClean) : baseClean;
+            const finalHls = vpnPrefix ? vpnPrefix + encodeURIComponent(baseClean + '.m3u8') : (baseClean + '.m3u8');
+
+            if (typeof mpegts !== 'undefined' && mpegts.getFeatureList().mseLivePlayback) {
+                try {
+                    const player = mpegts.createPlayer({ type: 'mse', isLive: true, url: finalTs });
+                    player.attachMediaElement(videoEl);
+                    player.load();
+                    player.play().catch(function() {});
+                    player.on(mpegts.Events.ERROR, function() {
+                        loadHlsFallback(finalHls, videoEl);
+                    });
+                    if (videoEl.id === 'liveStageVideo') mpegtsStage = player;
+                    else mpegtsHome = player;
+                    return;
+                } catch (e) {}
+            }
+            loadHlsFallback(finalHls, videoEl);
+        }
+
+        function loadHlsFallback(hlsUrl, videoEl) {
+            if (Hls.isSupported()) {
+                const hls = new Hls({ enableWorker: true });
+                hls.loadSource(hlsUrl);
+                hls.attachMedia(videoEl);
+                hls.on(Hls.Events.MANIFEST_PARSED, function() { videoEl.play().catch(function() {}); });
+                if (videoEl.id === 'homePreviewVideo') hlsHome = hls;
+                else hlsStage = hls;
+            } else {
+                videoEl.src = hlsUrl;
+                videoEl.play().catch(function() {});
+            }
+        }
+
+        // CATÁLOGO VOD
+        function renderVodCategories() {
+            const box = document.getElementById('vodCatsList');
+            box.innerHTML = '';
+            const q = document.getElementById('vodCatSearch').value.trim().toLowerCase();
+            const list = dbCatalog[currentVodSection] || [];
+            const counts = {};
+            const groups = [];
+            list.forEach(function(item) {
+                const g = item.group || 'GENERAL';
+                if (!counts[g]) { counts[g] = 0; groups.push(g); }
+                counts[g]++;
+            });
+
+            function addRow(id, label, count) {
+                const r = document.createElement('div');
+                r.className = 'cat-row' + (currentVodCat === id ? ' active' : '');
+                r.onclick = function() { currentVodCat = id; renderVodCategories(); renderVodGrid(); };
+                r.innerHTML = '<span>' + label + '</span><span style="opacity:0.6;">' + count + '</span>';
+                box.appendChild(r);
+            }
+
+            if (!q) {
+                addRow('all', '🌟 TODO EL CATÁLOGO', list.length);
+                addRow('resume', '⏱️ CONTINUAR VIENDO', Object.keys(resumeMap).length);
+            }
+            groups.forEach(function(g) {
+                if (q && !g.toLowerCase().includes(q)) return;
+                addRow(g, g, counts[g]);
+            });
+        }
+
+        function renderVodGrid() {
+            const grid = document.getElementById('vodPostersGrid');
+            grid.innerHTML = '';
+            const list = dbCatalog[currentVodSection] || [];
+            const q = document.getElementById('vodTitleSearch').value.trim().toLowerCase();
+
+            const filtered = list.filter(function(item) {
+                const g = item.group || '';
+                const matchQ = !q || item.title.toLowerCase().includes(q) || g.toLowerCase().includes(q);
+                const matchC = currentVodCat === 'all' ? true : (currentVodCat === 'resume' ? Boolean(resumeMap[item.rawUrl]) : g === currentVodCat);
+                return matchQ && matchC;
+            });
+
+            document.getElementById('vodHeaderTitle').innerText = (currentVodCat === 'all' ? 'TODO EL CATÁLOGO' : currentVodCat) + ' (' + filtered.length + ')';
+
+            filtered.slice(0, 180).forEach(function(item) {
+                const tile = document.createElement('div');
+                tile.className = 'poster-tile';
+                tile.onclick = function() {
+                    if (currentVodSection === 'series' || item.type === 'series') openSeriesModal(item);
+                    else openCinemaPlayer(item);
+                };
+                tile.innerHTML = (item.poster ? '<img src="' + item.poster + '" loading="lazy" onerror="this.style.display=\'none\'">' : '') +
+                                 '<div class="poster-tile-title">' + item.title + '</div>';
+                grid.appendChild(tile);
+            });
+        }
+
+        function normalizeMovieBaseName(title) {
+            return (title || '')
+                .replace(/\(\d{4}\)/g, '')
+                .replace(/\[.*?\]/g, '')
+                .replace(/-\s*T\d+\s*E\d+.*/i, '')
+                .replace(/\b(SUB|SUBTITULADA|SUBTITULADO|DUAL|LATINO|CASTELLANO|ESP|ESPAÑOL|ENG|INGLES|ANGLO|HD|FHD|4K|1080P|720P)\b/gi, '')
+                .replace(/[-|•:]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .toLowerCase();
+        }
+
+        // =========================================================
+        // MOTOR AUTO-SELECTOR INTELIGENTE (MOVI-PLAYER WASM + NATIVE)
+        // =========================================================
+        async function openCinemaPlayer(item) {
+            activeVodObj = item;
+            document.getElementById('cinemaTitle').innerText = item.title;
+            document.getElementById('cinemaModal').style.display = 'flex';
+            document.getElementById('osdPanel').style.display = 'none';
+
+            // 1. Llenar selector de variantes de idioma (Películas, Series y Canales)
+            populateLanguageVariants(item);
+
+            const mountBox = document.getElementById('playerMountBox');
+            if (hlsCinema) { hlsCinema.destroy(); hlsCinema = null; }
+            activeMoviElement = null;
+
+            const streamUrl = vpnPrefix ? vpnPrefix + encodeURIComponent(item.rawUrl) : item.rawUrl;
+            const isMkvOrVod = item.type !== 'live' && /\.(mkv|mp4|avi|ts)$/i.test(item.rawUrl);
+
+            // 2. Si Movi-Player (FFmpeg-WASM + WebCodecs) está disponible, auto-inicia para decodificar Dolby AC3 y leer pistas MKV
+            if (isMkvOrVod && window.customElements && window.customElements.get('movi-player')) {
+                mountBox.innerHTML = '<movi-player id="wasmPlayer" src="' + streamUrl + '" controls autoplay style="width:100%;height:100%;"></movi-player>';
+                activeMoviElement = document.getElementById('wasmPlayer');
+
+                // Si el servidor remoto bloquea lectura WASM por falta de cabeceras CORS, auto-conmuta a <video> nativo en 3.5 seg
+                let fallbackTimer = setTimeout(function() {
+                    if (activeMoviElement && (!activeMoviElement.duration || activeMoviElement.paused)) {
+                        mountNativeVideoFallback(streamUrl, item);
+                    }
+                }, 4000);
+
+                activeMoviElement.addEventListener('loadedmetadata', function() {
+                    clearTimeout(fallbackTimer);
+                    populateWasmTracks(activeMoviElement);
+                });
+                activeMoviElement.addEventListener('error', function() {
+                    clearTimeout(fallbackTimer);
+                    mountNativeVideoFallback(streamUrl, item);
+                });
+            } else {
+                mountNativeVideoFallback(streamUrl, item);
+            }
+
+            // 3. Consultar API del servidor por pistas de audio y subtítulos adicionales
+            if (item.id && item.type === 'movie') {
+                const host = document.getElementById('cfgHost').value.trim().replace(/\/+$/, '');
+                const user = document.getElementById('cfgUser').value.trim();
+                const pass = document.getElementById('cfgPass').value.trim();
+                const vodInfo = await apiFetch(host, user, pass, 'get_vod_info&vod_id=' + item.id);
+                if (vodInfo && vodInfo.info) {
+                    const vid = document.getElementById('cinemaVideo');
+                    if (vid) populateTracksFromVideo(vid, null, vodInfo.info);
+                }
+            }
+        }
+
+        function mountNativeVideoFallback(streamUrl, item) {
+            const mountBox = document.getElementById('playerMountBox');
+            activeMoviElement = null;
+            mountBox.innerHTML = '<video id="cinemaVideo" controls autoplay playsinline style="width:100%;height:100%;"></video>';
+            const video = document.getElementById('cinemaVideo');
+
+            if (item.type === 'live') {
+                const hlsUrl = item.rawUrl.replace(/\.m3u8$/i, '') + '.m3u8';
+                if (Hls.isSupported()) {
+                    hlsCinema = new Hls({ enableWorker: true });
+                    hlsCinema.loadSource(hlsUrl);
+                    hlsCinema.attachMedia(video);
+                    hlsCinema.on(Hls.Events.MANIFEST_PARSED, function() {
+                        video.play().catch(function() {});
+                        populateTracksFromVideo(video, hlsCinema, null);
+                    });
+                }
+                return;
+            }
+
+            video.src = streamUrl;
+            video.muted = false;
+            video.volume = 1.0;
+
+            video.onloadedmetadata = function() {
+                if (resumeMap[item.rawUrl] && resumeMap[item.rawUrl] > 15) {
+                    video.currentTime = resumeMap[item.rawUrl];
+                }
+                populateTracksFromVideo(video, null, null);
+            };
+
+            video.ontimeupdate = function() {
+                if (video.currentTime > 15 && video.duration > 60) {
+                    resumeMap[item.rawUrl] = video.currentTime;
+                    try { localStorage.setItem('xd_resume', JSON.stringify(resumeMap)); } catch (e) {}
+                }
+            };
+
+            video.play().catch(function() {});
+        }
+
+        // Lee todas las pistas de audio y subtítulos decodificadas por Movi-Player (FFmpeg-WASM)
+        function populateWasmTracks(moviEl) {
+            const audioSel = document.getElementById('internalAudioSelect');
+            const subSel = document.getElementById('subtitleSelect');
+            audioSel.innerHTML = '';
+            subSel.innerHTML = '<option value="-1">Subtítulos Desactivados</option>';
+
+            try {
+                const aTracks = moviEl.getAudioTracks ? moviEl.getAudioTracks() : [];
+                if (Array.isArray(aTracks) && aTracks.length > 0) {
+                    aTracks.forEach(function(t, idx) {
+                        const opt = document.createElement('option');
+                        opt.value = t.id !== undefined ? t.id : idx;
+                        opt.innerText = '🔊 Pista ' + (idx + 1) + ': ' + (t.label || t.language || t.codec || 'Idioma ' + (idx + 1)).toUpperCase();
+                        audioSel.appendChild(opt);
+                    });
+                } else {
+                    audioSel.innerHTML = '<option value="0">🔊 Audio Estéreo Decodificado (Auto)</option>';
+                }
+
+                const sTracks = moviEl.getSubtitleTracks ? moviEl.getSubtitleTracks() : [];
+                if (Array.isArray(sTracks) && sTracks.length > 0) {
+                    sTracks.forEach(function(s, idx) {
+                        const opt = document.createElement('option');
+                        opt.value = s.id !== undefined ? s.id : idx;
+                        opt.innerText = '💬 ' + (s.label || s.language || 'Subtítulo ' + (idx + 1)).toUpperCase();
+                        subSel.appendChild(opt);
+                    });
+                }
+            } catch (e) {}
+        }
+
+        // Corrige el selector en blanco para Series, Películas y Canales
+        function populateLanguageVariants(currentItem) {
+            const select = document.getElementById('languageVariantSelect');
+            select.innerHTML = '';
+
+            if (currentItem.type === 'live') {
+                const baseCh = currentItem.title.split('|').pop().replace(/\*(FHD|HD|HQ|LQ).*/i, '').trim().toLowerCase();
+                const chMatches = dbCatalog.live.filter(function(c) {
+                    return c.title.toLowerCase().includes(baseCh);
+                }).slice(0, 15);
+
+                chMatches.forEach(function(m) {
+                    const opt = document.createElement('option');
+                    opt.value = m.rawUrl;
+                    opt.innerText = '📡 ' + m.title + ' [' + (m.group || 'TV') + ']';
+                    if (m.rawUrl === currentItem.rawUrl) opt.selected = true;
+                    select.appendChild(opt);
+                });
+                return;
+            }
+
+            // Si estamos viendo un capítulo de una Serie (ej. VisionQuest - T1 E3), muestra los capítulos y versiones de la serie
+            if (currentItem.isSeriesEpisode && currentSeriesEpisodesList.length > 0) {
+                currentSeriesEpisodesList.forEach(function(epItem) {
+                    const opt = document.createElement('option');
+                    opt.value = epItem.rawUrl;
+                    opt.innerText = '🍿 ' + epItem.title + ' [' + (epItem.group || 'Serie') + ']';
+                    if (epItem.rawUrl === currentItem.rawUrl) opt.selected = true;
+                    select.appendChild(opt);
+                });
+                return;
+            }
+
+            // Búsqueda inteligente de todas las versiones de idioma de una Película en el catálogo
+            const baseName = normalizeMovieBaseName(currentItem.title);
+            const words = baseName.split(' ').filter(function(w) { return w.length > 2; });
+            const variants = dbCatalog.movies.filter(function(m) {
+                const mNorm = normalizeMovieBaseName(m.title);
+                if (mNorm === baseName) return true;
+                if (words.length >= 2 && mNorm.includes(words[0]) && mNorm.includes(words[1])) return true;
+                if (words.length === 1 && mNorm === words[0]) return true;
+                return false;
+            }).slice(0, 20);
+
+            if (variants.length > 0) {
+                variants.forEach(function(v) {
+                    const opt = document.createElement('option');
+                    opt.value = v.rawUrl;
+                    opt.innerText = '🎬 ' + v.title + ' — [' + (v.group || 'Cine') + ']';
+                    if (v.rawUrl === currentItem.rawUrl) opt.selected = true;
+                    select.appendChild(opt);
+                });
+            } else {
+                const opt = document.createElement('option');
+                opt.value = currentItem.rawUrl;
+                opt.innerText = '🎬 ' + currentItem.title + ' — [' + (currentItem.group || 'Original') + ']';
+                select.appendChild(opt);
+            }
+        }
+
+        function switchLanguageVariant(targetUrl) {
+            if (!targetUrl) return;
+            const found = dbCatalog.movies.find(function(m) { return m.rawUrl === targetUrl; }) ||
+                          currentSeriesEpisodesList.find(function(e) { return e.rawUrl === targetUrl; }) ||
+                          dbCatalog.live.find(function(c) { return c.rawUrl === targetUrl; });
+            if (found) openCinemaPlayer(found);
+        }
+
+        function populateTracksFromVideo(video, hlsInstance, serverVodInfo) {
+            const audioSel = document.getElementById('internalAudioSelect');
+            audioSel.innerHTML = '';
+
+            if (hlsInstance && hlsInstance.audioTracks && hlsInstance.audioTracks.length > 0) {
+                hlsInstance.audioTracks.forEach(function(t, i) {
+                    const opt = document.createElement('option');
+                    opt.value = i;
+                    opt.innerText = '🔊 ' + (t.name || t.lang || ('Idioma ' + (i + 1)));
+                    if (i === hlsInstance.audioTrack) opt.selected = true;
+                    audioSel.appendChild(opt);
+                });
+            } else if (video && video.audioTracks && video.audioTracks.length > 0) {
+                for (let i = 0; i < video.audioTracks.length; i++) {
+                    const t = video.audioTracks[i];
+                    const opt = document.createElement('option');
+                    opt.value = i;
+                    opt.innerText = '🔊 ' + (t.label || t.language || ('Pista de Audio ' + (i + 1)));
+                    if (t.enabled) opt.selected = true;
+                    audioSel.appendChild(opt);
+                }
+            } else if (serverVodInfo && serverVodInfo.audio) {
+                const codec = String(serverVodInfo.audio.codec_name || 'STEREO').toUpperCase();
+                const lang = (serverVodInfo.audio.tags && serverVodInfo.audio.tags.language) ? serverVodInfo.audio.tags.language.toUpperCase() : 'ORIGINAL';
+                audioSel.innerHTML = '<option value="0">🔊 Audio Detectado: ' + lang + ' (' + codec + ')</option>' +
+                                     '<option value="alt_mp4">🔄 Forzar Audio Estéreo Compatible (MP4)</option>';
+            } else {
+                audioSel.innerHTML = '<option value="0">🔊 Audio Principal del Stream</option>' +
+                                     '<option value="alt_mp4">🔄 Recargar Flujo de Audio Alternativo</option>';
+            }
+
+            const subSel = document.getElementById('subtitleSelect');
+            subSel.innerHTML = '<option value="-1">Subtítulos Desactivados</option>';
+
+            if (hlsInstance && hlsInstance.subtitleTracks && hlsInstance.subtitleTracks.length > 0) {
+                hlsInstance.subtitleTracks.forEach(function(s, i) {
+                    const opt = document.createElement('option');
+                    opt.value = i;
+                    opt.innerText = '💬 ' + (s.name || s.lang || ('Subtítulo ' + (i + 1)));
+                    subSel.appendChild(opt);
+                });
+            } else if (video && video.textTracks && video.textTracks.length > 0) {
+                for (let i = 0; i < video.textTracks.length; i++) {
+                    const tr = video.textTracks[i];
+                    const opt = document.createElement('option');
+                    opt.value = i;
+                    opt.innerText = '💬 ' + (tr.label || tr.language || ('Subtítulo ' + (i + 1)));
+                    if (tr.mode === 'showing') opt.selected = true;
+                    subSel.appendChild(opt);
+                }
+            }
+
+            if (serverVodInfo && Array.isArray(serverVodInfo.subtitles)) {
+                serverVodInfo.subtitles.forEach(function(subObj, idx) {
+                    if (subObj.url && video) {
+                        const track = document.createElement('track');
+                        track.kind = 'subtitles';
+                        track.label = subObj.language || ('Subtítulo ' + (idx + 1));
+                        track.src = subObj.url;
+                        video.appendChild(track);
+                        const opt = document.createElement('option');
+                        opt.value = idx;
+                        opt.innerText = '💬 ' + track.label;
+                        subSel.appendChild(opt);
+                    }
+                });
+            }
+        }
+
+        function switchInternalAudioTrack(val) {
+            if (val === 'alt_mp4' && activeVodObj) {
+                const video = document.getElementById('cinemaVideo');
+                if (video) {
+                    const cur = video.currentTime || 0;
+                    const altUrl = activeVodObj.rawUrl.replace(/\.mkv$/i, '.mp4');
+                    video.src = altUrl;
+                    video.onloadedmetadata = function() {
+                        video.currentTime = cur;
+                        video.play().catch(function() {});
+                    };
+                }
+                return;
+            }
+
+            const idx = parseInt(val, 10);
+            if (activeMoviElement && activeMoviElement.selectAudioTrack) {
+                activeMoviElement.selectAudioTrack(idx);
+                return;
+            }
+            if (hlsCinema && hlsCinema.audioTracks && hlsCinema.audioTracks.length > idx) {
+                hlsCinema.audioTrack = idx;
+                return;
+            }
+            const video = document.getElementById('cinemaVideo');
+            if (video && video.audioTracks && video.audioTracks.length > 0) {
+                for (let i = 0; i < video.audioTracks.length; i++) {
+                    video.audioTracks[i].enabled = (i === idx);
+                }
+                video.currentTime = Math.max(0, video.currentTime - 0.1);
+            }
+        }
+
+        function switchSubtitleTrack(idxStr) {
+            const idx = parseInt(idxStr, 10);
+            if (activeMoviElement && activeMoviElement.selectSubtitleTrack) {
+                activeMoviElement.selectSubtitleTrack(idx);
+                return;
+            }
+            if (hlsCinema) hlsCinema.subtitleTrack = idx;
+            const video = document.getElementById('cinemaVideo');
+            if (video && video.textTracks) {
+                for (let i = 0; i < video.textTracks.length; i++) {
+                    video.textTracks[i].mode = (i === idx) ? 'showing' : 'hidden';
+                }
+            }
+        }
+
+        function uploadSrtFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                let txt = e.target.result;
+                if (!txt.startsWith('WEBVTT')) {
+                    txt = 'WEBVTT\n\n' + txt.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+                }
+                const blob = new Blob([txt], { type: 'text/vtt' });
+                const video = document.getElementById('cinemaVideo') || activeMoviElement;
+                if (!video) return;
+                const track = document.createElement('track');
+                track.kind = 'subtitles';
+                track.label = file.name;
+                track.srclang = 'es';
+                track.src = URL.createObjectURL(blob);
+                track.default = true;
+                video.appendChild(track);
+                if (video.textTracks) {
+                    populateTracksFromVideo(video, hlsCinema, null);
+                    switchSubtitleTrack(String(video.textTracks.length - 1));
+                    document.getElementById('subtitleSelect').value = String(video.textTracks.length - 1);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function setSafeVolume(val) {
+            const v = document.getElementById('cinemaVideo') || activeMoviElement;
+            if (v) {
+                v.muted = false;
+                v.volume = parseFloat(val);
+            }
+            document.getElementById('volPct').innerText = Math.round(val * 100) + '%';
+        }
+
+        function setSubStyle(sizePx) {
+            document.documentElement.style.setProperty('--sub-size', sizePx);
+        }
+
+        function toggleOsdPanel() {
+            const p = document.getElementById('osdPanel');
+            p.style.display = (p.style.display === 'flex') ? 'none' : 'flex';
+        }
+
+        function closeCinemaModal() {
+            const mountBox = document.getElementById('playerMountBox');
+            mountBox.innerHTML = '<video id="cinemaVideo" controls autoplay playsinline></video>';
+            activeMoviElement = null;
+            if (hlsCinema) { hlsCinema.destroy(); hlsCinema = null; }
+            document.getElementById('cinemaModal').style.display = 'none';
+        }
+
+        async function openSeriesModal(ser) {
+            const host = document.getElementById('cfgHost').value.trim().replace(/\/+$/, '');
+            const user = document.getElementById('cfgUser').value.trim();
+            const pass = document.getElementById('cfgPass').value.trim();
+            document.getElementById('seriesTitleHeader').innerText = '🍿 ' + ser.title;
+            const box = document.getElementById('episodesContainer');
+            box.innerHTML = '<div style="color:var(--cyan); text-align:center; padding:18px;">Cargando temporadas y capítulos...</div>';
+            document.getElementById('seriesEpisodesModal').style.display = 'flex';
+
+            const sId = ser.id || (ser.rawUrl ? ser.rawUrl.replace('series_', '') : '');
+            const data = await apiFetch(host, user, pass, 'get_series_info&series_id=' + sId);
+            box.innerHTML = '';
+            currentSeriesEpisodesList = [];
+
+            if (data && data.episodes) {
+                Object.keys(data.episodes).forEach(function(sNum) {
+                    data.episodes[sNum].forEach(function(ep) {
+                        const ext = ep.container_extension || 'mp4';
+                        const epUrl = host + '/series/' + user + '/' + pass + '/' + ep.id + '.' + ext;
+                        const epObj = {
+                            id: ep.id,
+                            title: ser.title + ' - T' + sNum + ' E' + ep.episode_num + (ep.title ? ' (' + ep.title + ')' : ''),
+                            rawUrl: epUrl,
+                            group: ser.group || 'SERIE',
+                            type: 'movie',
+                            isSeriesEpisode: true
+                        };
+                        currentSeriesEpisodesList.push(epObj);
+
+                        const row = document.createElement('div');
+                        row.className = 'ep-row-btn';
+                        row.innerHTML = '<span><b>T' + sNum + ' • Ep ' + ep.episode_num + ':</b> ' + (ep.title || 'Capítulo ' + ep.episode_num) + '</span><span>▶ Reproducir</span>';
+                        row.onclick = function() {
+                            document.getElementById('seriesEpisodesModal').style.display = 'none';
+                            openCinemaPlayer(epObj);
+                        };
+                        box.appendChild(row);
+                    });
+                });
+            } else {
+                box.innerHTML = '<div>No se encontraron capítulos.</div>';
+            }
+        }
+
+        function toggleFavorite(url) {
+            const i = favoritesList.indexOf(url);
+            if (i === -1) favoritesList.push(url);
+            else favoritesList.splice(i, 1);
+            try { localStorage.setItem('xd_favs', JSON.stringify(favoritesList)); } catch (e) {}
+            renderLiveCategories();
+            renderLiveChannelsList();
+        }
+
+        function openVpnModal() { document.getElementById('vpnModal').style.display = 'flex'; }
+        function openSettingsModal() { document.getElementById('settingsModal').style.display = 'flex'; }
+        function setVpnProxy(label, prefix) {
+            vpnPrefix = prefix;
+            document.getElementById('vpnTopText').innerText = 'VPN: ' + label;
+            document.getElementById('vpnModal').style.display = 'none';
+        }
+
+        async function clearDatabase() {
+            localStorage.clear();
+            try { indexedDB.deleteDatabase('OmniXD_DB_v12'); } catch (e) {}
+            location.reload();
+        }
+    </script>
+</body>
+</html>
