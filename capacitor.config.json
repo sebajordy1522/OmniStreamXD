@@ -1,5 +1,6 @@
 {
   "appId": "com.omnistream.xd",
   "appName": "OmniStreamXD",
-  "webDir": "."
+  "webDir": "www",
+  "bundledWebRuntime": false
 }
